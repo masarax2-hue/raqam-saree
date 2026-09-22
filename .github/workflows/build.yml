@@ -1,1 +1,51 @@
+name: Build APK
 
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Extract Android project
+        shell: bash
+        run: |
+          ZIP="$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$ZIP"
+          rm -rf build-project
+          mkdir build-project
+          unzip -q "$ZIP" -d build-project
+          ROOT="$(find build-project -type f -name 'settings.gradle' -print -quit | xargs -r dirname)"
+          test -n "$ROOT"
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: raqam-saree-apk
+          path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/*.apk
