@@ -18,34 +18,53 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          yes | sdkmanager --licenses || true
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-
-      - name: Install Android SDK
-        run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          gradle-version: '8.10'
 
       - name: Extract Android project
         shell: bash
         run: |
           ZIP="$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)"
-          test -n "$ZIP"
-          rm -rf build-project
-          mkdir build-project
-          unzip -q "$ZIP" -d build-project
-          ROOT="$(find build-project -type f -name 'settings.gradle' -print -quit | xargs -r dirname)"
-          test -n "$ROOT"
+
+          if [ -z "$ZIP" ]; then
+            echo "لم يتم العثور على ملف ZIP للمشروع"
+            exit 1
+          fi
+
+          mkdir -p project
+          unzip -q "$ZIP" -d project
+
+          ROOT="$(find project -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -print -quit)"
+
+          if [ -z "$ROOT" ]; then
+            echo "لم يتم العثور على مشروع Android داخل ZIP"
+            exit 1
+          fi
+
+          ROOT="$(dirname "$ROOT")"
           echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          echo "Project root: $ROOT"
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_ROOT }}
-        run: gradle :app:assembleDebug --no-daemon
+        run: |
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: raqam-saree-apk
+          name: raqam-saree-debug-apk
           path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
